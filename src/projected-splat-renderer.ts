@@ -1011,7 +1011,7 @@ class ProjectedSplatRenderer {
             compute.setParameter('occlusionBlock', OCCLUSION_BLOCK);
             compute.setParameter('occlusionEnabled', occlusion ? 1 : 0);
             // picks keep the EWA footprint the selection tools are built on
-            compute.setParameter('eval3d', !forPick && events.invoke('view.eval3d') ? 1 : 0);
+            compute.setParameter('eval3d', !forPick && splat.eval3d ? 1 : 0);
 
             const workgroups = Math.ceil(placement.entryCapacity / WORKGROUP_SIZE);
             Compute.calcDispatchSize(workgroups, this.dispatchSize);

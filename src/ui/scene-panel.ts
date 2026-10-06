@@ -116,7 +116,7 @@ class ScenePanel extends Container {
         this.append(sceneHeader);
         this.append(splatListContainer);
         this.append(transformHeader);
-        this.append(new Transform(events));
+        this.append(new Transform(events, tooltips));
         this.append(new ColorPanel(events));
     }
 }

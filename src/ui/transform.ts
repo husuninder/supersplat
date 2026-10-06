@@ -1,14 +1,16 @@
-import { Container, ContainerArgs, Label, NumericInput, VectorInput } from '@playcanvas/pcui';
+import { BooleanInput, Container, ContainerArgs, Label, NumericInput, VectorInput } from '@playcanvas/pcui';
 import { Quat, Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
 import { i18n } from './localization';
 import { Pivot } from '../pivot';
+import { Splat } from '../splat';
+import { Tooltips } from './tooltips';
 
 const v = new Vec3();
 
 class Transform extends Container {
-    constructor(events: Events, args: ContainerArgs = {}) {
+    constructor(events: Events, tooltips: Tooltips, args: ContainerArgs = {}) {
         args = {
             ...args,
             id: 'transform'
@@ -82,9 +84,30 @@ class Transform extends Container {
         scale.append(scaleLabel);
         scale.append(scaleInput);
 
+        // 3DGUT evaluation of the selected layer
+        const eval3d = new Container({
+            class: 'transform-row'
+        });
+
+        const eval3dLabel = new Label({
+            class: 'transform-label'
+        });
+        i18n.bindText(eval3dLabel, 'panel.scene.transform.eval3d');
+
+        const eval3dToggle = new BooleanInput({
+            type: 'toggle',
+            value: false,
+            enabled: false
+        });
+
+        eval3d.append(eval3dLabel);
+        eval3d.append(eval3dToggle);
+        tooltips.register(eval3d, () => i18n.t('tooltip.scene.eval3d'), 'right');
+
         this.append(position);
         this.append(rotation);
         this.append(scale);
+        this.append(eval3d);
 
         const toArray = (v: Vec3) => {
             return [v.x, v.y, v.z];
@@ -154,8 +177,22 @@ class Transform extends Container {
         });
 
         // toggle ui availability based on selection
-        events.on('selection.changed', (selection) => {
-            positionVector.enabled = rotationVector.enabled = scaleInput.enabled = !!selection;
+        events.on('selection.changed', (selection: Splat) => {
+            positionVector.enabled = rotationVector.enabled = scaleInput.enabled = eval3dToggle.enabled = !!selection;
+            eval3dToggle.value = selection?.eval3d ?? false;
+        });
+
+        events.on('splat.eval3d', (splat: Splat) => {
+            if (splat === events.invoke('selection')) {
+                eval3dToggle.value = splat.eval3d;
+            }
+        });
+
+        eval3dToggle.on('change', (value: boolean) => {
+            const selection = events.invoke('selection') as Splat;
+            if (selection) {
+                selection.eval3d = value;
+            }
         });
 
         events.on('pivot.placed', (pivot: Pivot) => {

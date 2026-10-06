@@ -54,6 +54,7 @@ class Splat extends Element {
     worldBoundStorage: BoundingBox;
 
     _visible = true;
+    _eval3d = false;
     transformPalette: TransformPalette;
     colorPalette: ColorPalette;
 
@@ -295,6 +296,7 @@ class Splat extends Element {
         // and this layer has not been added to one yet
         layer._name = name;
         layer._visible = this._visible;
+        layer._eval3d = this._eval3d;
 
         // the copied instances still index *this* layer's palettes, so give the new
         // layer its own entries for the transforms and grades it actually
@@ -423,6 +425,21 @@ class Splat extends Element {
         return this._visible;
     }
 
+    // render with 3DGUT's ray-based evaluation (eval3d) instead of the EWA
+    // footprint: the right model for scenes trained with 3DGUT (3dgrut, or
+    // gsplat with_ut / with_eval3d). Nothing in the file marks such a scene, so
+    // the user opts the layer in
+    set eval3d(value: boolean) {
+        if (value !== this._eval3d) {
+            this._eval3d = value;
+            this.scene?.events.fire('splat.eval3d', this);
+        }
+    }
+
+    get eval3d() {
+        return this._eval3d;
+    }
+
     // get pivot position/rotation/scale (caller should have awaited operation that changed data)
     getPivot(result: Transform) {
         const { entity } = this;
@@ -454,7 +471,8 @@ class Splat extends Element {
             scale: pack3(this.entity.getLocalScale()),
             localFrameOrigin: pack3(this.localFrameOrigin),
             localFrame: pack4(this.localFrame),
-            visible: this.visible
+            visible: this.visible,
+            eval3d: this.eval3d
         };
     }
 
@@ -467,6 +485,7 @@ class Splat extends Element {
         this.localFrameOrigin = doc.localFrameOrigin ? new Vec3(doc.localFrameOrigin) : new Vec3();
         this.localFrame = doc.localFrame ? new Quat(doc.localFrame) : new Quat();
         this.visible = visible;
+        this.eval3d = doc.eval3d ?? false;
         this.migrateLayerGrade(doc);
     }
 

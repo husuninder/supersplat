@@ -127,7 +127,6 @@ const registerPreferences = (events: Events, config: SceneConfig, urlArgs: any) 
         // edit view over the stored value (the editor skips its auto-enable
         // while preference application is suspended, and this applies last)
         { key: 'view.editView', setCommand: 'view.setEditView', getDefault: () => false, validate: isBool, group: 'appearance' },
-        { key: 'view.eval3d', setCommand: 'view.setEval3d', getDefault: () => true, validate: isBool, group: 'preferences' },
         { key: 'view.stochastic', setCommand: 'view.setStochastic', getDefault: () => 'auto', validate: isEnum(['disabled', 'enabled', 'movement', 'auto']), group: 'preferences' },
         { key: 'view.perfOverlay', setCommand: 'view.setPerfOverlay', getDefault: () => false, validate: isBool, group: 'overlays' },
         { key: 'grid.visible', setCommand: 'grid.setVisible', urlPath: 'show.grid', getDefault: () => config.show.grid, validate: isBool, group: 'overlays' },

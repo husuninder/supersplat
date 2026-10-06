@@ -255,34 +255,12 @@ class SettingsPanel extends Container {
         stochasticRow.append(stochasticLabel);
         stochasticRow.append(stochasticSelection);
 
-        // eval3d (3DGUT) gaussian evaluation
-
-        const eval3dRow = new Container({
-            class: 'settings-panel-row'
-        });
-
-        const eval3dLabel = new Label({
-            class: 'settings-panel-row-label'
-        });
-        i18n.bindText(eval3dLabel, 'panel.settings.eval3d');
-
-        const eval3dToggle = new BooleanInput({
-            type: 'toggle',
-            class: 'settings-panel-row-toggle',
-            value: true
-        });
-
-        eval3dRow.append(eval3dLabel);
-        eval3dRow.append(eval3dToggle);
-        rowToggles(eval3dRow, eval3dToggle);
-
         rowToggles(fovDollyRow, fovDollyToggle);
 
         this.append(header);
         this.append(languageRow);
         this.append(sectionHeader('panel.settings.section-rendering'));
         this.append(stochasticRow);
-        this.append(eval3dRow);
         this.append(tonemappingRow);
         this.append(shBandsRow);
         this.append(sectionHeader('panel.settings.section-camera'));
@@ -361,16 +339,6 @@ class SettingsPanel extends Container {
 
         stochasticSelection.on('change', (value: string) => {
             events.fire('view.setStochastic', value);
-        });
-
-        // eval3d
-
-        events.on('view.eval3d', (value: boolean) => {
-            eval3dToggle.value = value;
-        });
-
-        eval3dToggle.on('change', (value: boolean) => {
-            events.fire('view.setEval3d', value);
         });
 
         // camera fov
