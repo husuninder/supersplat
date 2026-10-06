@@ -242,10 +242,7 @@ fn hashU32(x: u32) -> u32 {
 fn fragmentMain(input: FragmentInput) -> FragmentOutput {
     var output: FragmentOutput;
     let radius = dot(gaussianUV, gaussianUV);
-    let eval3d = eval3dK > 0.0;
-    // the eval3d quad is sized from the EWA footprint, which only approximates
-    // the ray response's extent: let its corners through and cut on alpha below
-    if (radius > 1.0 && !eval3d) {
+    if (radius > 1.0) {
         discard;
     }
 
@@ -274,23 +271,18 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
       #else
         let selected = (gaussianFlags & 1u) != 0u;
         var norm = normExp(radius);
-        if (eval3d) {
-            // peak gaussian response along this pixel's ray (eval3dParams)
+        if (eval3dK > 0.0) {
+            // eval3d: peak gaussian response along this pixel's ray, see
+            // eval3dParams in the projector; responses under 1/255 are cut as
+            // 3DGUT's renderers do
             let invK = 1.0 / eval3dK;
             let lateral = dot(eval3dRay.xy, eval3dRay.xy);
             let along = 1.0 + eval3dRay.z * invK;
             norm = exp(-0.5 * lateral / (lateral * invK * invK + along * along));
+            norm = select(0.0, norm, norm * opacity >= 1.0 / 255.0);
         }
         let showGaussian = uniform.showGaussians != 0u || (selected && uniform.showSelectedGaussians != 0u);
         var alpha = select(0.0, norm * opacity, showGaussian);
-        if (eval3d) {
-            // gsplat / 3dgrut compositing rules: alpha capped at 0.999, and
-            // contributions under 1/255 skipped
-            alpha = min(alpha, 0.999);
-            if (alpha < 1.0 / 255.0 && !(uniform.ringSize > 0.0)) {
-                discard;
-            }
-        }
         let packedMid = unpack2x16float(packedColor1);
         var color = vec3f(unpack2x16float(packedColor0), packedMid.x);
         // Rings apply only to the selected splat's gaussians (gaussianId is the

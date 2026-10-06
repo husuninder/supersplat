@@ -230,6 +230,7 @@ fn eval3dParams(gaussian: mat3x3f, viewCenter: vec3f, depth: f32, focal: vec2f) 
     let inv = inverse3(gaussian);
     let a = inv * (viewCenter / depth);
     let aLen = length(a);
+    // a degenerate (zero-scale) gaussian has no finite inverse: leave it to EWA
     if (!(aLen > 0.0) || aLen > 1e30) {
         return vec4u(0u);
     }
@@ -382,9 +383,11 @@ fn main(
     // Cap the longest radius in screen pixels and scale both axes equally
     // to preserve the ellipse's aspect ratio.
     let maxRadius = min(1024.0, min(viewport.x, viewport.y));
-    // eval3d keeps responses down to 1/255, out to sqrt(2 ln 255) = 3.33 sigma;
+    // eval3d needs a view ray per pixel, so orthographic views keep EWA. It
+    // keeps responses down to 1/255, out to sqrt(2 ln 255) = 3.33 sigma, where
     // the EWA kernel is cut at 2 sqrt(2) sigma
-    let extentScale = select(1.0, 3.33 / 2.8284, uniforms.eval3d != 0u && uniforms.isOrtho == 0u);
+    let useEval3d = uniforms.eval3d != 0u && uniforms.isOrtho == 0u;
+    let extentScale = select(1.0, 3.33 / 2.8284, useEval3d);
     let len1 = 2.0 * sqrt(2.0 * lambda1) * extentScale;
     let radiusScale = min(1.0, maxRadius / len1);
     let axis1 = len1 * radiusScale * direction;
@@ -545,7 +548,7 @@ fn main(
             | select(0u, 0x02000000u, locked)
     ));
     var rayParams = vec4u(0u);
-    if (uniforms.eval3d != 0u && uniforms.isOrtho == 0u) {
+    if (useEval3d) {
         rayParams = eval3dParams(gaussian, viewCenter.xyz, depth, focal);
     }
     textureStore(cacheC, cacheUv, rayParams);
