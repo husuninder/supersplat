@@ -194,7 +194,7 @@ class ProjectedSplatRenderer {
     private drawSlot = -1;
     private cacheA: Texture | null = null;
     private cacheB: Texture | null = null;
-    // eval3d (3DGUT) ray parameters per entry, see the projector shader
+    // eval3d ray parameters per entry, see the projector shader
     private cacheC: Texture | null = null;
     private cacheWidth = 1;
     private cacheHeight = 1;

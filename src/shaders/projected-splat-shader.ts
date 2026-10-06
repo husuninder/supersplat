@@ -274,7 +274,7 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
         if (eval3dK > 0.0) {
             // eval3d: peak gaussian response along this pixel's ray, see
             // eval3dParams in the projector; responses under 1/255 are cut as
-            // 3DGUT's renderers do
+            // the 3DGRT / 3DGUT renderers do
             let invK = 1.0 / eval3dK;
             let lateral = dot(eval3dRay.xy, eval3dRay.xy);
             let along = 1.0 + eval3dRay.z * invK;

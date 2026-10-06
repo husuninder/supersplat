@@ -84,7 +84,7 @@ class Transform extends Container {
         scale.append(scaleLabel);
         scale.append(scaleInput);
 
-        // 3DGUT evaluation of the selected layer
+        // ray-based 3D evaluation (eval3d) of the selected layer
         const eval3d = new Container({
             class: 'transform-row'
         });

@@ -425,10 +425,10 @@ class Splat extends Element {
         return this._visible;
     }
 
-    // render with 3DGUT's ray-based evaluation (eval3d) instead of the EWA
-    // footprint: the right model for scenes trained with 3DGUT (3dgrut, or
-    // gsplat with_ut / with_eval3d). Nothing in the file marks such a scene, so
-    // the user opts the layer in
+    // evaluate gaussians along each pixel's view ray (eval3d, from 3DGRT and
+    // used by 3DGUT) instead of by their EWA footprint: the right model for
+    // scenes trained with 3DGUT (3dgrut, or gsplat with_ut / with_eval3d).
+    // Nothing in the file marks such a scene, so the user opts the layer in
     set eval3d(value: boolean) {
         if (value !== this._eval3d) {
             this._eval3d = value;

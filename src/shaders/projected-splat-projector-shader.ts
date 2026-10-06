@@ -146,7 +146,7 @@ struct ProjectorUniforms {
     occlusionBlocksY: u32,
     occlusionBlock: f32,
     occlusionEnabled: u32,
-    // 1: write eval3d ray parameters to cacheC for the 3DGUT evaluation
+    // 1: write eval3d ray parameters to cacheC
     eval3d: u32
 }
 
@@ -211,7 +211,8 @@ fn inverse3(m: mat3x3f) -> mat3x3f {
     return transpose(mat3x3f(c0, c1, c2)) * invDet;
 }
 
-// eval3d (3DGUT, "max response along the ray"): a pixel's response is
+// eval3d (3DGRT's "max response along the ray", also used by 3DGUT): a
+// pixel's response is
 // exp(-0.5 * d^2), d = distance from the gaussian's centre to the pixel's view
 // ray, measured in gaussian space (where the gaussian is a unit sphere). With
 // Ginv mapping camera space to gaussian space, a pixel offset q (pixels, from
