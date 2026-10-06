@@ -71,7 +71,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         'view.splatsColorBlend', 'view.splatsSelectionBlend',
         'view.centersColorBlend', 'view.centersSelectionBlend',
         'view.ringsColorBlend', 'view.ringsSelectionBlend',
-        'view.bands', 'view.minPixelSize', 'view.stochastic', 'view.perfOverlay', 'view.overdraw', 'camera.bound', 'camera.boundDimensions', 'camera.showPoses',
+        'view.bands', 'view.minPixelSize', 'view.eval3d', 'view.stochastic', 'view.perfOverlay', 'view.overdraw', 'camera.bound', 'camera.boundDimensions', 'camera.showPoses',
         'camera.showInfo', 'selection.changed', 'tool.coordSpace', 'colorPanel.pendingChanged'
     ].forEach((eventName) => {
         events.on(eventName, () => {
@@ -1270,6 +1270,23 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         if (value !== minPixelSize) {
             minPixelSize = value;
             events.fire('view.minPixelSize', minPixelSize);
+        }
+    });
+
+    // 3DGUT-style gaussian evaluation (eval3d): each pixel takes the gaussian's
+    // peak response along its view ray instead of the EWA 2D footprint, matching
+    // scenes trained with 3dgrut / gsplat's with_eval3d
+
+    let eval3d = true;
+
+    events.function('view.eval3d', () => {
+        return eval3d;
+    });
+
+    events.on('view.setEval3d', (value: boolean) => {
+        if (value !== eval3d) {
+            eval3d = value;
+            events.fire('view.eval3d', eval3d);
         }
     });
 

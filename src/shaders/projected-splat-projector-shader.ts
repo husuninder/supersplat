@@ -145,7 +145,9 @@ struct ProjectorUniforms {
     occlusionBlocksX: u32,
     occlusionBlocksY: u32,
     occlusionBlock: f32,
-    occlusionEnabled: u32
+    occlusionEnabled: u32,
+    // 1: write eval3d ray parameters to cacheC for the 3DGUT evaluation
+    eval3d: u32
 }
 
 // compaction output: surviving splats are appended to a dense list, so the sort
@@ -176,6 +178,7 @@ ${bands > 0 ? '@group(0) @binding(14) var splatSH_1to3: texture_2d<u32>;' : ''}
 ${bands > 1 ? '@group(0) @binding(15) var splatSH_4to7: texture_2d<u32>;\n@group(0) @binding(16) var splatSH_8to11: texture_2d<u32>;' : ''}
 ${bands > 2 ? '@group(0) @binding(17) var splatSH_12to15: texture_2d<u32>;' : ''}
 @group(0) @binding(${14 + (bands > 0 ? 1 : 0) + (bands > 1 ? 2 : 0) + (bands > 2 ? 1 : 0)}) var<uniform> uniforms: ProjectorUniforms;
+@group(0) @binding(${15 + (bands > 0 ? 1 : 0) + (bands > 1 ? 2 : 0) + (bands > 2 ? 1 : 0)}) var cacheC: texture_storage_2d<rgba32uint, write>;
 
 ${shCode(bands)}
 ${indexToUvWGSL('sourceCoord', 'uniforms.sourceWidth')}
@@ -197,6 +200,56 @@ fn rotationMatrix(qIn: vec4f) -> mat3x3f {
         vec3f(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y + w * z), 2.0 * (x * z - w * y)),
         vec3f(2.0 * (x * y - w * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z + w * x)),
         vec3f(2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y))
+    );
+}
+
+fn inverse3(m: mat3x3f) -> mat3x3f {
+    let c0 = cross(m[1], m[2]);
+    let c1 = cross(m[2], m[0]);
+    let c2 = cross(m[0], m[1]);
+    let invDet = 1.0 / dot(m[0], c0);
+    return transpose(mat3x3f(c0, c1, c2)) * invDet;
+}
+
+// eval3d (3DGUT, "max response along the ray"): a pixel's response is
+// exp(-0.5 * d^2), d = distance from the gaussian's centre to the pixel's view
+// ray, measured in gaussian space (where the gaussian is a unit sphere). With
+// Ginv mapping camera space to gaussian space, a pixel offset q (pixels, from
+// the splat's projected centre) has gaussian-space ray direction a + q.x hx +
+// q.y hy, where a = Ginv (centre / depth) and h = Ginv's x/y columns over the
+// focal length; the ray starts at -depth * a. In a basis whose z axis is a,
+// with G = depth * (hx, hy expressed in that basis) and k = depth |a|:
+//   d^2 = |Gq.xy|^2 / (|Gq.xy|^2 / k^2 + (1 + Gq.z / k)^2),  Gq = q.x Gx + q.y Gy
+// Gq is linear in q, so the vertex stage interpolates it across the quad and
+// the fragment stage evaluates d exactly. Storing Gx, Gy (O(1) at the quad
+// edge) rather than the ray origin (|origin| ~ depth / scale) avoids the
+// cancellation that would need f32 there, so they pack into halves.
+// cacheC = (Gx.xy, (Gx.z, Gy.x), Gy.yz as f16 pairs, k as f32); k = 0 means
+// "no eval3d for this entry" and the render shader falls back to EWA
+fn eval3dParams(gaussian: mat3x3f, viewCenter: vec3f, depth: f32, focal: vec2f) -> vec4u {
+    let inv = inverse3(gaussian);
+    let a = inv * (viewCenter / depth);
+    let aLen = length(a);
+    if (!(aLen > 0.0) || aLen > 1e30) {
+        return vec4u(0u);
+    }
+    // orthonormal basis around e3 = a / |a| (Duff et al. 2017)
+    let e3 = a / aLen;
+    let sgn = select(-1.0, 1.0, e3.z >= 0.0);
+    let bA = -1.0 / (sgn + e3.z);
+    let bB = e3.x * e3.y * bA;
+    let e1 = vec3f(1.0 + sgn * e3.x * e3.x * bA, sgn * bB, -sgn * e3.x);
+    let e2 = vec3f(bB, sgn + e3.y * e3.y * bA, -e3.y);
+    let hx = inv[0] / focal.x;
+    let hy = inv[1] / focal.y;
+    let limit = vec3f(60000.0);
+    let gx = clamp(depth * vec3f(dot(hx, e1), dot(hx, e2), dot(hx, e3)), -limit, limit);
+    let gy = clamp(depth * vec3f(dot(hy, e1), dot(hy, e2), dot(hy, e3)), -limit, limit);
+    return vec4u(
+        pack2x16float(gx.xy),
+        pack2x16float(vec2f(gx.z, gy.x)),
+        pack2x16float(gy.yz),
+        bitcast<u32>(depth * aLen)
     );
 }
 
@@ -329,10 +382,13 @@ fn main(
     // Cap the longest radius in screen pixels and scale both axes equally
     // to preserve the ellipse's aspect ratio.
     let maxRadius = min(1024.0, min(viewport.x, viewport.y));
-    let len1 = 2.0 * sqrt(2.0 * lambda1);
+    // eval3d keeps responses down to 1/255, out to sqrt(2 ln 255) = 3.33 sigma;
+    // the EWA kernel is cut at 2 sqrt(2) sigma
+    let extentScale = select(1.0, 3.33 / 2.8284, uniforms.eval3d != 0u && uniforms.isOrtho == 0u);
+    let len1 = 2.0 * sqrt(2.0 * lambda1) * extentScale;
     let radiusScale = min(1.0, maxRadius / len1);
     let axis1 = len1 * radiusScale * direction;
-    let len2 = 2.0 * sqrt(2.0 * lambda2) * radiusScale;
+    let len2 = 2.0 * sqrt(2.0 * lambda2) * extentScale * radiusScale;
     let axis2 = len2 * vec2f(direction.y, -direction.x);
 
     let ndc = clip.xy / clip.w;
@@ -488,6 +544,11 @@ fn main(
             | select(0u, 0x01000000u, selected)
             | select(0u, 0x02000000u, locked)
     ));
+    var rayParams = vec4u(0u);
+    if (uniforms.eval3d != 0u && uniforms.isOrtho == 0u) {
+        rayParams = eval3dParams(gaussian, viewCenter.xyz, depth, focal);
+    }
+    textureStore(cacheC, cacheUv, rayParams);
     if (sizeCulled || contributionCulled || occluded) {
         let tail = atomicAdd(&splatCounter[1], 1u);
         compactEntries[compactTailSlot(tail, uniforms.capacity)] = entry;

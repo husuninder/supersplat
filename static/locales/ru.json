@@ -80,6 +80,7 @@
     "panel.settings.sh-bands": "Полосы SH",
     "panel.settings.fly-speed": "Скорость полёта",
     "panel.settings.stochastic-alpha": "Стохастическая альфа",
+    "panel.settings.eval3d": "3DGUT evaluation (eval3d)",
     "panel.settings.stochastic-alpha.disabled": "Отключено",
     "panel.settings.stochastic-alpha.enabled": "Включено",
     "panel.settings.stochastic-alpha.movement": "При движении",

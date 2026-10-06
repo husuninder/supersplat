@@ -14,6 +14,7 @@ var<storage, read> sortedIndices: array<u32>;
 var<storage, read> splatCount: array<u32>;
 var cacheA: texture_2d<u32>;
 var cacheB: texture_2d<u32>;
+var cacheC: texture_2d<u32>;
 
 uniform cacheWidth: u32;
 uniform viewportSize: vec4f;
@@ -36,6 +37,10 @@ uniform showSelectedGaussians: u32;
 uniform warpStrength: f32;
 
 varying gaussianUV: vec2f;
+// eval3d: the projector's Gq term (see eval3dParams), linear across the quad,
+// and k (0 = evaluate the EWA footprint instead)
+varying eval3dRay: vec3f;
+varying @interpolate(flat, either) eval3dK: f32;
 // the two resolved colours - gaussian fill and ring band - travel as six halves
 // in three flat words: (fill.r, fill.g), (fill.b, ring.r), (ring.g, ring.b).
 // The vertex stage is bound by writing its outputs, not by arithmetic, and the
@@ -166,6 +171,12 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
         #endif
     #endif
     output.gaussianUV = corner;
+    let rayParams = textureLoad(cacheC, uv, 0);
+    let gx = unpack2x16float(rayParams.x);
+    let gxzy = unpack2x16float(rayParams.y);
+    let gy = unpack2x16float(rayParams.z);
+    output.eval3dRay = pixelOffset.x * vec3f(gx, gxzy.x) + pixelOffset.y * vec3f(gxzy.y, gy);
+    output.eval3dK = bitcast<f32>(rayParams.w);
     let fill = prepareOutputFromGamma(gaussianRgb, clip.w);
     let ring = prepareOutputFromGamma(select(ringRgb, selectedRingRgb, (flags & 1u) != 0u), clip.w);
     output.packedColor0 = pack2x16float(fill.rg);
@@ -184,6 +195,8 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 
 const fragmentShader = /* wgsl */`
 varying gaussianUV: vec2f;
+varying eval3dRay: vec3f;
+varying @interpolate(flat, either) eval3dK: f32;
 varying @interpolate(flat, either) packedColor0: u32;
 varying @interpolate(flat, either) packedColor1: u32;
 varying @interpolate(flat, either) packedColor2: u32;
@@ -229,7 +242,10 @@ fn hashU32(x: u32) -> u32 {
 fn fragmentMain(input: FragmentInput) -> FragmentOutput {
     var output: FragmentOutput;
     let radius = dot(gaussianUV, gaussianUV);
-    if (radius > 1.0) {
+    let eval3d = eval3dK > 0.0;
+    // the eval3d quad is sized from the EWA footprint, which only approximates
+    // the ray response's extent: let its corners through and cut on alpha below
+    if (radius > 1.0 && !eval3d) {
         discard;
     }
 
@@ -257,9 +273,24 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
         output.color1 = vec4f(0.0);
       #else
         let selected = (gaussianFlags & 1u) != 0u;
-        let norm = normExp(radius);
+        var norm = normExp(radius);
+        if (eval3d) {
+            // peak gaussian response along this pixel's ray (eval3dParams)
+            let invK = 1.0 / eval3dK;
+            let lateral = dot(eval3dRay.xy, eval3dRay.xy);
+            let along = 1.0 + eval3dRay.z * invK;
+            norm = exp(-0.5 * lateral / (lateral * invK * invK + along * along));
+        }
         let showGaussian = uniform.showGaussians != 0u || (selected && uniform.showSelectedGaussians != 0u);
         var alpha = select(0.0, norm * opacity, showGaussian);
+        if (eval3d) {
+            // gsplat / 3dgrut compositing rules: alpha capped at 0.999, and
+            // contributions under 1/255 skipped
+            alpha = min(alpha, 0.999);
+            if (alpha < 1.0 / 255.0 && !(uniform.ringSize > 0.0)) {
+                discard;
+            }
+        }
         let packedMid = unpack2x16float(packedColor1);
         var color = vec3f(unpack2x16float(packedColor0), packedMid.x);
         // Rings apply only to the selected splat's gaussians (gaussianId is the

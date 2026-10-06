@@ -194,6 +194,8 @@ class ProjectedSplatRenderer {
     private drawSlot = -1;
     private cacheA: Texture | null = null;
     private cacheB: Texture | null = null;
+    // eval3d (3DGUT) ray parameters per entry, see the projector shader
+    private cacheC: Texture | null = null;
     private cacheWidth = 1;
     private cacheHeight = 1;
     private capacity = 0;
@@ -490,7 +492,8 @@ class ProjectedSplatRenderer {
             new UniformFormat('occlusionBlocksX', UNIFORMTYPE_UINT),
             new UniformFormat('occlusionBlocksY', UNIFORMTYPE_UINT),
             new UniformFormat('occlusionBlock', UNIFORMTYPE_FLOAT),
-            new UniformFormat('occlusionEnabled', UNIFORMTYPE_UINT)
+            new UniformFormat('occlusionEnabled', UNIFORMTYPE_UINT),
+            new UniformFormat('eval3d', UNIFORMTYPE_UINT)
         ]);
         const bindGroupFormat = new BindGroupFormat(this.device, [
             new BindStorageBufferFormat('sortKeys', SHADERSTAGE_COMPUTE),
@@ -503,7 +506,8 @@ class ProjectedSplatRenderer {
             new BindStorageBufferFormat('instancePalette', SHADERSTAGE_COMPUTE, true),
             new BindStorageBufferFormat('prevDepthMax', SHADERSTAGE_COMPUTE, true),
             ...textureFormats,
-            new BindUniformBufferFormat('uniforms', SHADERSTAGE_COMPUTE)
+            new BindUniformBufferFormat('uniforms', SHADERSTAGE_COMPUTE),
+            new BindStorageTextureFormat('cacheC', PIXELFORMAT_RGBA32U)
         ]);
         const shader = new Shader(this.device, {
             name: `ProjectedSplatProjector-${bands}`,
@@ -764,10 +768,12 @@ class ProjectedSplatRenderer {
             this.compactEntries?.destroy();
             this.cacheA?.destroy();
             this.cacheB?.destroy();
+            this.cacheC?.destroy();
             this.sortKeys = null;
             this.compactEntries = null;
             this.cacheA = null;
             this.cacheB = null;
+            this.cacheC = null;
             this.capacity = count;
 
             if (count > 0) {
@@ -786,6 +792,14 @@ class ProjectedSplatRenderer {
                     width: this.cacheWidth,
                     height: this.cacheHeight,
                     format: PIXELFORMAT_R32U,
+                    mipmaps: false,
+                    storage: true
+                });
+                this.cacheC = new Texture(this.device, {
+                    name: 'ProjectedSplatCacheC',
+                    width: this.cacheWidth,
+                    height: this.cacheHeight,
+                    format: PIXELFORMAT_RGBA32U,
                     mipmaps: false,
                     storage: true
                 });
@@ -818,7 +832,7 @@ class ProjectedSplatRenderer {
         if (this.layoutDirty) {
             this.rebuildLayout();
         }
-        if (this.capacity === 0 || !this.sortKeys || !this.compactEntries || !this.cacheA || !this.cacheB) {
+        if (this.capacity === 0 || !this.sortKeys || !this.compactEntries || !this.cacheA || !this.cacheB || !this.cacheC) {
             this.centersEntity.enabled = false;
             this.frameStochastic = false;
             return;
@@ -926,6 +940,7 @@ class ProjectedSplatRenderer {
             compute.setParameter('splatCounter', this.splatCounter);
             compute.setParameter('cacheA', this.cacheA);
             compute.setParameter('cacheB', this.cacheB);
+            compute.setParameter('cacheC', this.cacheC);
             compute.setParameter('instanceSource', instances.instanceSource);
             compute.setParameter('instanceFlags', instances.instanceFlags);
             compute.setParameter('instancePalette', instances.instancePalette);
@@ -995,6 +1010,8 @@ class ProjectedSplatRenderer {
             compute.setParameter('occlusionBlocksY', this.occlusionBlocks.y);
             compute.setParameter('occlusionBlock', OCCLUSION_BLOCK);
             compute.setParameter('occlusionEnabled', occlusion ? 1 : 0);
+            // picks keep the EWA footprint the selection tools are built on
+            compute.setParameter('eval3d', !forPick && events.invoke('view.eval3d') ? 1 : 0);
 
             const workgroups = Math.ceil(placement.entryCapacity / WORKGROUP_SIZE);
             Compute.calcDispatchSize(workgroups, this.dispatchSize);
@@ -1048,6 +1065,7 @@ class ProjectedSplatRenderer {
         }
         this.material.setParameter('cacheA', this.cacheA);
         this.material.setParameter('cacheB', this.cacheB);
+        this.material.setParameter('cacheC', this.cacheC);
         this.material.setParameter('cacheWidth', this.cacheWidth);
         this.finishPick();
         const viewportParams = [targetSize.width, targetSize.height, 2 / targetSize.width, 2 / targetSize.height];
@@ -1140,7 +1158,7 @@ class ProjectedSplatRenderer {
     }
 
     get stats(): ProjectedRendererStats {
-        const cacheBytes = this.cacheWidth * this.cacheHeight * 20 * (this.capacity > 0 ? 1 : 0);
+        const cacheBytes = this.cacheWidth * this.cacheHeight * 36 * (this.capacity > 0 ? 1 : 0);
         // 4 bytes of sort key plus 4 of compacted entry index, per slot
         const keyBytes = this.capacity * 8;
         const estimatedRadixBytes = this.capacity * 12;
@@ -1195,6 +1213,7 @@ class ProjectedSplatRenderer {
         this.footprintIntervals?.destroy();
         this.cacheA?.destroy();
         this.cacheB?.destroy();
+        this.cacheC?.destroy();
         this.sorter.destroy();
         this.entity.destroy();
         this.meshInstance.destroy();
